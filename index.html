@@ -171,7 +171,12 @@
   th, td { padding: 10px 14px; border-bottom: 1px solid var(--line); text-align: right; }
   th:first-child, td:first-child { text-align: left; }
   thead th { background: var(--sky); font-weight: 600; border-bottom: 2px solid var(--navy-soft); }
-  tbody tr:last-child td { border-bottom: 0; }
+  tbody th { text-align: left; font-weight: 500; border-bottom: 1px solid var(--line); }
+  tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+  table.core td:nth-child(3), table.core td:nth-child(4), table.core th:nth-child(3), table.core th:nth-child(4) { text-align: left; }
+  table.core td:nth-child(3) { min-width: 280px; }
+  table.core td:nth-child(4) { min-width: 170px; }
+  .core-empty { margin: 0 0 8px; color: var(--muted); }
   .table-panel { margin-bottom: 22px; padding: 22px 22px 14px; }
   .table-scroll { overflow-x: auto; }
 
@@ -339,7 +344,7 @@ function analyse(rows) {
     const by = {};
     yearCols.forEach(c => { by[c.year] = parseInt(row[c.i], 10) || 0; });
     const pre = preCols.reduce((a, c) => a + (parseInt(row[c.i], 10) || 0), 0);
-    docs.push({ title: row[1].trim(), pubYear: +row[0], pre, by });
+    docs.push({ title: row[1].trim(), journal: (row[3] || '').trim(), pubYear: +row[0], pre, by });
   }
   if (!docs.length || !yearCols.length) return null;
 
@@ -361,7 +366,7 @@ function analyse(rows) {
   const mH = head.match(/h-index\s*=\s*(\d+)/i);
   const mSelf = head.match(/Self citations[^.]*\./i);
   return {
-    docs: docs.length, first, last, stats,
+    docs: docs.length, list: docs, first, last, stats,
     scopusH: mH ? +mH[1] : null,
     selfNote: mSelf ? mSelf[0].trim() : ''
   };
@@ -469,6 +474,16 @@ function render(end) {
   const hs = five.map(y => get(y).h);
   const threeTotal = three.reduce((a, y) => a + get(y).cit, 0);
   const hGain = get(end).h - get(end - 2).h;
+  const hNow = get(end).h;
+  const core = data.list
+    .map(d => {
+      let c = d.pre;
+      for (let k = data.first; k <= end; k++) c += d.by[k] || 0;
+      return { ...d, cites: c };
+    })
+    .sort((a, b) => b.cites - a.cites || b.pubYear - a.pubYear)
+    .slice(0, hNow);
+  const coreShare = core.reduce((a, d) => a + d.cites, 0);
   const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
   let notes = `<p>The h-index for each year is calculated from the citations your documents had received by the end of that year, using the year-wise counts in the uploaded file.</p>`;
@@ -513,9 +528,22 @@ function render(end) {
         <table>
           <caption>Year-wise figures</caption>
           <thead><tr><th scope="col">Year</th><th scope="col">Citations in the year</th><th scope="col">h-index</th></tr></thead>
-          <tbody>${five.map((y, i) => `<tr><th scope="row" style="text-align:left;font-weight:500;background:none;border-bottom:1px solid var(--line)">${y}</th><td>${cits[i]}</td><td>${hs[i]}</td></tr>`).join('')}</tbody>
+          <tbody>${five.map((y, i) => `<tr><th scope="row">${y}</th><td>${cits[i]}</td><td>${hs[i]}</td></tr>`).join('')}</tbody>
         </table>
       </div>
+    </section>
+
+    <section class="panel table-panel" aria-labelledby="coreTitle">
+      <div class="table-scroll">
+        <table class="core">
+          <caption id="coreTitle">Papers contributing to the h-index (${end})</caption>
+          ${hNow === 0
+            ? `<tbody><tr><td colspan="5" class="core-empty" style="text-align:left">No paper had reached the h-index threshold by the end of ${end}.</td></tr></tbody>`
+            : `<thead><tr><th scope="col">Rank</th><th scope="col">Year</th><th scope="col">Paper</th><th scope="col">Journal</th><th scope="col">Citations</th></tr></thead>
+          <tbody>${core.map((d, i) => `<tr><th scope="row">${i + 1}</th><td>${d.pubYear}</td><td>${esc(d.title)}</td><td>${esc(d.journal)}</td><td>${d.cites}</td></tr>`).join('')}</tbody>`}
+        </table>
+      </div>
+      ${hNow === 0 ? '' : `<p class="hint" style="margin:10px 0 8px">${hNow === 1 ? 'This paper is your most-cited paper and has' : `These ${hNow} papers are your ${hNow} most-cited papers, each with`} at least ${hNow} ${hNow === 1 ? 'citation' : 'citations'} by the end of ${end}. ${hNow === 1 ? 'It has' : 'Together they have'} ${coreShare} ${coreShare === 1 ? 'citation' : 'citations'}.</p>`}
     </section>
 
     <section class="summary" aria-labelledby="sumTitle">
